@@ -1,0 +1,11 @@
+<!--    https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=109454066-->
+<!--    https://tika.apache.org/1.23/api/org/apache/tika/parser/pdf/PDFParserConfig.html#setOcrDPI(int)-->
+<entries>
+    <entry class="org.apache.tika.parser.pdf.PDFParserConfig" impl="org.apache.tika.parser.pdf.PDFParserConfig">
+        <property name="extractInlineImages" value="false"/>
+        <property name="extractUniqueInlineImagesOnly" value="false"/>
+        <property name="ocrStrategy" value="AUTO"/>
+        <property name="ocrImageType" value="BINARY"/>
+        <property name="ocrDPI" value="300"/>
+    </entry>
+</entries>

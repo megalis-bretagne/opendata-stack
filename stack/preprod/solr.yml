@@ -1,0 +1,78 @@
+version: "3.7"
+
+volumes:
+  data_solr:
+  data_redis:
+
+networks:
+  default:
+    external: true
+    name: megalis_default
+
+services:
+  solr:
+    image: ${URL_DOCKER}/csm/open-data/solr/${IMAGE_NAME}:${CI_COMMIT_SHA}
+    environment:
+      TZ: "Europe/Paris"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - data_solr:/var/solr
+    command:
+      - solr-precreate
+      - publication_core
+      - server/solr/configsets/publication_config/
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+      placement:
+        constraints:
+          - "node.role==manager"
+          - "engine.labels.type==opendata"
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        delay: 0s
+      update_config:
+        parallelism: 1
+        delay: 0s
+        order: stop-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 1g
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=megalis_default"
+        - "traefik.http.routers.solr.entrypoints=web-secure"
+        - "traefik.http.routers.solr.rule=Host(`solr-preprod.megalis.bretagne.bzh`)"
+        - "traefik.http.routers.solr.tls=true"
+        - "traefik.http.services.solr.loadbalancer.server.port=8983"
+  redis:
+    image: redis:6.2.1
+    volumes:
+      - data_redis:/data
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+      placement:
+        constraints:
+          - "node.role==manager"
+          - "engine.labels.type==opendata"
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        delay: 0s
+      update_config:
+        parallelism: 1
+        delay: 0s
+        order: stop-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: 256m
+        reservations:
+          memory: 128m

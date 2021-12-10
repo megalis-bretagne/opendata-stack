@@ -1,0 +1,70 @@
+version: "3.7"
+networks:
+  default:
+    external: true
+    name: megalis_default
+
+volumes:
+  sshvolume-open-data-public:
+    external: true
+  sshvolume-open-data-private:
+    external: true
+
+configs:
+  environment.v13:
+    file: /data/livraison/config/preprod/environment.properties
+  inc.config.v1:
+    file: /data/open-data/config/preprod/inc.config.php
+  auth_openidc.conf.v1:
+    file: /data/open-data/config/preprod/auth_openidc.conf
+
+services:
+  datasearch:
+    image: ${URL_DOCKER}/megalis/opendata/opendata-marqueblanche/${IMAGE_NAME}:${CI_COMMIT_SHA}
+    volumes:
+      - sshvolume-open-data-public:/public
+      - sshvolume-open-data-private:/private
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: "Europe/Paris"
+    configs:
+      - source: environment.v13
+        target: /config/environment.properties
+      - source: inc.config.v1
+        target: /var/www/html/src/inc.config.php
+      - source: auth_openidc.conf.v1
+        target: /etc/apache2/mods-enabled/auth_openidc.conf
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+#      placement:
+#        constraints:
+#          - "node.role==manager"
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        delay: 0s
+      update_config:
+        parallelism: 1
+        delay: 0s
+        order: stop-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 128m
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=megalis_default"
+        - "traefik.http.routers.datasearch.entrypoints=web-secure"
+        - "traefik.http.routers.datasearch.rule=Host(`data-preprod.megalis.bretagne.bzh`)"
+        - "traefik.http.routers.datasearch.tls=true"
+        - "traefik.http.middlewares.datasearch.headers.accesscontrolalloworiginlist=*"
+        - "traefik.http.middlewares.datasearch.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST"
+        - "traefik.http.middlewares.datasearch.headers.accesscontrolmaxage=100"
+        - "traefik.http.middlewares.datasearch.headers.accesscontrolallowheaders=*"
+        - "traefik.http.middlewares.datasearch.headers.addvaryheader=true"
+        - "traefik.http.routers.datasearch.middlewares=datasearch@docker"
+        - "traefik.http.services.datasearch.loadbalancer.server.port=80"

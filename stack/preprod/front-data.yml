@@ -1,0 +1,42 @@
+version: "3.7"
+networks:
+  default:
+    external: true
+    name: megalis_default
+services:
+  front:
+    image: ${URL_DOCKER}/megalis/opendata/opendata-front/${IMAGE_NAME}:${CI_COMMIT_SHA}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: "Europe/Paris"
+      PROD_ENV: 'false'
+      KEYCLOAK_ISSUER: https://sso-preprod.megalis.bretagne.bzh/auth/
+      API_URL: https://data-publication-preprod.megalis.bretagne.bzh
+      URL_MARQUE_BLANCHE: https://data-preprod.megalis.bretagne.bzh
+      URL_LOGOUT: https://socle-preprod.megalis.bretagne.bzh/singlelogout?logoutSSO=false
+    deploy:
+      mode: replicated
+      replicas: 2
+      endpoint_mode: vip
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        delay: 0s
+      update_config:
+        parallelism: 1
+        delay: 0s
+        order: start-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: 128m
+        reservations:
+          memory: 16m
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=megalis_default"
+        - "traefik.http.routers.front.entrypoints=web-secure"
+        - "traefik.http.routers.front.rule=Host(`data-publication-preprod.megalis.bretagne.bzh`)"
+        - "traefik.http.routers.front.tls=true"
+        - "traefik.http.services.front.loadbalancer.server.port=80"

@@ -1,0 +1,181 @@
+version: "3.7"
+networks:
+  default:
+    external: true
+    name: megalis_default
+configs:
+  environment.settings.v1:
+    file: /data/open-data/config/preprod/extraction-open-data/local_settings.py
+  keycloak.json.v1:
+    file: /data/open-data/config/preprod/extraction-open-data/keycloak.json
+volumes:
+  sshvolume-open-data-public:
+    external: true
+  sshvolume-open-data-private:
+    external: true
+
+services:
+  api:
+    image: ${URL_DOCKER}/megalis/opendata/opendata-extraction/${IMAGE_NAME}:${CI_COMMIT_SHA}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - sshvolume-open-data-private:/private
+    environment:
+      TZ: "Europe/Paris"
+    configs:
+      - source: environment.settings.v1
+        target: /appli/app/local_settings.py
+      - source: keycloak.json.v1
+        target: /appli/app/keycloak.json
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+#      placement:
+#        constraints:
+#          - "node.role==manager"
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        delay: 0s
+      update_config:
+        parallelism: 1
+        delay: 0s
+        order: stop-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: 128m
+        reservations:
+          memory: 16m
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=megalis_default"
+        - "traefik.http.routers.api-data.entrypoints=web-secure"
+        - "traefik.http.routers.api-data.rule=((Host(`data-publication-preprod.megalis.bretagne.bzh`)&&(PathPrefix(`/doc`)||PathPrefix(`/swaggerui`)||PathPrefix(`/api`)))|| Host(`data-api-preprod.megalis.bretagne.bzh`))"
+        - "traefik.http.routers.api-data.tls=true"
+        - "traefik.http.services.api-data.loadbalancer.server.port=80"
+  watcher:
+    image: ${URL_DOCKER}/megalis/opendata/opendata-extraction/${IMAGE_NAME}:${CI_COMMIT_SHA}
+    command: "python manage.py watcher"
+    environment:
+      TZ: "Europe/Paris"
+    configs:
+      - source: environment.settings.v1
+        target: /appli/app/local_settings.py
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - sshvolume-open-data-private:/private
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        delay: 0s
+      update_config:
+        parallelism: 1
+        delay: 0s
+        order: stop-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: 64m
+        reservations:
+          memory: 16m
+  worker:
+    image: ${URL_DOCKER}/megalis/opendata/opendata-extraction/${IMAGE_NAME}:${CI_COMMIT_SHA}
+    command: celery -A app.celeryapp.celery_worker.celery worker --pool=solo --loglevel=info
+    environment:
+      TZ: "Europe/Paris"
+    configs:
+      - source: environment.settings.v1
+        target: /appli/app/local_settings.py
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - sshvolume-open-data-private:/private
+      - sshvolume-open-data-public:/public
+    deploy:
+      mode: replicated
+      replicas: 2
+      endpoint_mode: vip
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        delay: 0s
+      update_config:
+        parallelism: 1
+        delay: 0s
+        order: stop-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: 128m
+        reservations:
+          memory: 8m
+  beat:
+    image: ${URL_DOCKER}/megalis/opendata/opendata-extraction/${IMAGE_NAME}:${CI_COMMIT_SHA}
+    command: celery -A app.celeryapp.celery_worker.celery beat --loglevel=info -s /tmp/celerybeat-schedule.dat
+    environment:
+      TZ: "Europe/Paris"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    configs:
+      - source: environment.settings.v1
+        target: /appli/app/local_settings.py
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        delay: 0s
+      update_config:
+        parallelism: 1
+        delay: 0s
+        order: stop-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: 64m
+        reservations:
+          memory: 8m
+  flower:
+    image: mher/flower:0.9.5
+    #command: python -m flower -A tasks --max_workers 5 --max_tasks 100
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: "Europe/Paris"
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+#      placement:
+#        constraints:
+#          - "node.role==manager"
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        delay: 0s
+      update_config:
+        parallelism: 1
+        delay: 0s
+        order: stop-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: 128m
+        reservations:
+          memory: 128m
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=megalis_default"
+        - "traefik.http.routers.flower.entrypoints=web-secure"
+        - "traefik.http.routers.flower.rule=Host(`flower-preprod.megalis.bretagne.bzh`)"
+        - "traefik.http.routers.flower.tls=true"
+        - "traefik.http.services.flower.loadbalancer.server.port=5555"
